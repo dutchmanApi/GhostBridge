@@ -1,0 +1,6 @@
+{
+  "name": "GhostBridge - Zero-Cost Semantic Runtime for AI Agents",
+  "description": "Bridges stealth browsers and real physical Android devices into a unified, 95%-token-saving semantic runtime and MCP server for AI agents.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
