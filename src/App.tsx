@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Smartphone,
   Globe,
@@ -23,6 +23,8 @@ import {
   Activity,
   Lock,
   Database,
+  Send,
+  Boxes,
 } from 'lucide-react';
 import { distillHtmlString } from './distillers/domDistiller.ts';
 import { distillAndroidXml } from './distillers/androidDistiller.ts';
@@ -105,7 +107,7 @@ const PRESET_ANDROID_PLAYSTORE = `<?xml version='1.0' encoding='UTF-8' standalon
   </node>
 </hierarchy>`;
 
-// Sample mock vault entries for UI inspector
+// Sample mock vault entries
 const INITIAL_VAULT_PROFILES: SessionVaultRecord[] = [
   {
     id: 'github.com',
@@ -134,13 +136,52 @@ const INITIAL_VAULT_PROFILES: SessionVaultRecord[] = [
   },
 ];
 
+// 7 MCP Tools metadata
+const MCP_TOOLS_LIST = [
+  {
+    name: 'ghost_inspect',
+    description: 'Distills active screen into compact numbered Markdown map with token reduction stats.',
+    defaultArgs: { platform: 'web' },
+  },
+  {
+    name: 'ghost_click',
+    description: 'Clicks an element [targetId] with human Bezier curves (Web) or precision center tap (Android).',
+    defaultArgs: { targetId: 2, platform: 'web' },
+  },
+  {
+    name: 'ghost_type',
+    description: 'Types text into input [targetId] with realistic human typing cadence.',
+    defaultArgs: { targetId: 6, text: 'Search repositories', submit: true },
+  },
+  {
+    name: 'ghost_open',
+    description: 'Navigates to URL on web or launches package on Android.',
+    defaultArgs: { target: 'https://news.ycombinator.com', platform: 'web' },
+  },
+  {
+    name: 'ghost_scroll',
+    description: 'Scrolls viewport with gesture micro-jitter.',
+    defaultArgs: { direction: 'down' },
+  },
+  {
+    name: 'ghost_handoff',
+    description: 'Pauses agent and sounds terminal chime for manual 2FA/CAPTCHA resolution.',
+    defaultArgs: { reason: 'Cloudflare Turnstile challenge encountered' },
+  },
+  {
+    name: 'ghost_switch_target',
+    description: 'Toggles active runtime between "web" and "android".',
+    defaultArgs: { platform: 'android' },
+  },
+];
+
 export default function App() {
   const [activePlatform, setActivePlatform] = useState<'web' | 'android'>('web');
   const [selectedPreset, setSelectedPreset] = useState<string>('github');
   const [rawInput, setRawInput] = useState<string>(PRESET_WEB_GITHUB);
   const [selectedElementId, setSelectedElementId] = useState<number | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'distiller' | 'actions' | 'bezier' | 'vault' | 'calculator' | 'mcp'>('distiller');
+  const [activeTab, setActiveTab] = useState<'distiller' | 'bezier' | 'actions' | 'vault' | 'calculator' | 'mcp'>('distiller');
   const [dailyActions, setDailyActions] = useState<number>(1000);
 
   // Runtime action logs
@@ -158,8 +199,14 @@ export default function App() {
   const [trajectoryPoints, setTrajectoryPoints] = useState<TrajectoryPoint[]>([]);
 
   // Session Vault profiles
-  const [vaultProfiles, setVaultProfiles] = useState<SessionVaultRecord[]>(INITIAL_VAULT_PROFILES);
+  const [vaultProfiles] = useState<SessionVaultRecord[]>(INITIAL_VAULT_PROFILES);
   const [selectedVaultDomain, setSelectedVaultDomain] = useState<string>('github.com');
+
+  // MCP Simulator state
+  const [selectedMcpTool, setSelectedMcpTool] = useState<string>('ghost_inspect');
+  const [mcpArgsInput, setMcpArgsInput] = useState<string>(JSON.stringify({ platform: 'web' }, null, 2));
+  const [mcpResponsePayload, setMcpResponsePayload] = useState<string>('');
+  const [mcpRequestId, setMcpRequestId] = useState<number>(1);
 
   // Compute distilled state
   const distilledState: DistilledState = useMemo(() => {
@@ -251,6 +298,54 @@ export default function App() {
     ]);
   };
 
+  // MCP Simulator execution handler
+  const handleRunMcpTool = () => {
+    let parsedArgs: any = {};
+    try {
+      parsedArgs = JSON.parse(mcpArgsInput);
+    } catch {
+      setMcpResponsePayload(JSON.stringify({ error: 'Invalid JSON arguments' }, null, 2));
+      return;
+    }
+
+    const nextId = mcpRequestId + 1;
+    setMcpRequestId(nextId);
+
+    let resultText = '';
+    if (selectedMcpTool === 'ghost_inspect') {
+      resultText = `${distilledState.markdown}\nToken reduction: ${distilledState.stats.tokenReductionPercentage}% savings (~${distilledState.stats.distilledEstimatedTokens} tokens vs ~${distilledState.stats.rawEstimatedTokens} raw)`;
+    } else if (selectedMcpTool === 'ghost_click') {
+      const targetId = parsedArgs.targetId || 1;
+      const el = distilledState.elements.find((e) => e.id === targetId);
+      resultText = `Clicked element [${targetId}] <${el?.tag || 'node'}> "${el?.label || ''}" at (${el?.bounds.centerX || 120}, ${el?.bounds.centerY || 80})\n\nUpdated State:\n${distilledState.markdown}`;
+    } else if (selectedMcpTool === 'ghost_type') {
+      resultText = `Typed "${parsedArgs.text || 'text'}" into element [${parsedArgs.targetId || 1}]\n\nUpdated State:\n${distilledState.markdown}`;
+    } else if (selectedMcpTool === 'ghost_open') {
+      resultText = `Navigated to ${parsedArgs.target || 'https://news.ycombinator.com'}\n\n${distilledState.markdown}`;
+    } else if (selectedMcpTool === 'ghost_scroll') {
+      resultText = `Scrolled ${parsedArgs.direction || 'down'}\n\nUpdated State:\n${distilledState.markdown}`;
+    } else if (selectedMcpTool === 'ghost_handoff') {
+      resultText = `Human handoff resolved. Session state captured into ~/.ghostbridge/vault/${selectedVaultDomain}.json\n\nResuming agent execution.`;
+    } else if (selectedMcpTool === 'ghost_switch_target') {
+      resultText = `Switched active GhostBridge target to: ${(parsedArgs.platform || 'web').toUpperCase()}`;
+    }
+
+    const response = {
+      jsonrpc: '2.0',
+      id: nextId,
+      result: {
+        content: [
+          {
+            type: 'text',
+            text: resultText,
+          },
+        ],
+      },
+    };
+
+    setMcpResponsePayload(JSON.stringify(response, null, 2));
+  };
+
   // Cost estimates
   const rawCostPerMonth = ((dailyActions * 30 * 25000) / 1000000) * 3.0;
   const ghostCostPerMonth = ((dailyActions * 30 * 350) / 1000000) * 3.0;
@@ -258,48 +353,60 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-cyan-500 selection:text-black">
-      {/* Top Header */}
-      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur px-6 py-3.5 flex items-center justify-between sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white font-black text-xl">
-            👻
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold tracking-tight text-lg text-white">GhostBridge</span>
-              <span className="px-2 py-0.5 text-xs font-semibold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                Phase 2 Ready
-              </span>
-              <span className="px-2 py-0.5 text-xs font-medium rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Stealth & ADB Drivers Active
-              </span>
+      {/* Top Header - Responsive with flex-wrap and generous spacing */}
+      <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur px-6 py-3 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+          {/* Brand & Status Pills */}
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-cyan-500/20 text-white font-black text-xl shrink-0">
+              👻
             </div>
-            <p className="text-xs text-slate-400">
-              Stealth Browser & Real Android ADB Unified Semantic Runtime
-            </p>
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-extrabold tracking-tight text-lg text-white">GhostBridge</span>
+                <span className="px-2 py-0.5 text-[11px] font-semibold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 whitespace-nowrap">
+                  v1.0.0 Production
+                </span>
+                <span className="px-2 py-0.5 text-[11px] font-medium rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1 whitespace-nowrap">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  CLI & MCP Server Ready
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 hidden sm:block">
+                Stealth Web & Real Physical Android Semantic Runtime for AI Agents
+              </p>
+            </div>
+          </div>
+
+          {/* Metric Badges */}
+          <div className="flex items-center gap-3 text-xs bg-slate-950/80 px-3 py-1.5 rounded-lg border border-slate-800">
+            <span className="text-slate-400 font-mono hidden md:inline">Zero Cloud Cost</span>
+            <span className="text-slate-600 hidden md:inline">•</span>
+            <span className="text-emerald-400 font-mono font-semibold">
+              {distilledState.stats.tokenReductionPercentage}% Token Savings
+            </span>
           </div>
         </div>
 
-        {/* Navigation Tabs */}
-        <div className="flex items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 text-xs font-medium">
+        {/* Second Row: Navigation Tabs */}
+        <div className="max-w-7xl mx-auto mt-2.5 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-1.5">
           <button
             onClick={() => setActiveTab('distiller')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
               activeTab === 'distiller'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
             <Zap className="h-3.5 w-3.5" />
-            Distiller
+            Semantic Distiller
           </button>
           <button
             onClick={() => setActiveTab('bezier')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
               activeTab === 'bezier'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
             <Compass className="h-3.5 w-3.5" />
@@ -307,10 +414,10 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('actions')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
               activeTab === 'actions'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
             <MousePointer className="h-3.5 w-3.5" />
@@ -318,55 +425,45 @@ export default function App() {
           </button>
           <button
             onClick={() => setActiveTab('vault')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
               activeTab === 'vault'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
             <Database className="h-3.5 w-3.5" />
             Session Vault
           </button>
           <button
+            onClick={() => setActiveTab('mcp')}
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
+              activeTab === 'mcp'
+                ? 'bg-cyan-600 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+            }`}
+          >
+            <Boxes className="h-3.5 w-3.5" />
+            MCP Protocol & Simulator
+          </button>
+          <button
             onClick={() => setActiveTab('calculator')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg transition text-xs font-semibold flex items-center gap-1.5 ${
               activeTab === 'calculator'
                 ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
             <TrendingDown className="h-3.5 w-3.5" />
             Token Tax ROI
           </button>
-          <button
-            onClick={() => setActiveTab('mcp')}
-            className={`px-3 py-1.5 rounded-md transition flex items-center gap-1.5 ${
-              activeTab === 'mcp'
-                ? 'bg-cyan-600 text-white shadow'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <Terminal className="h-3.5 w-3.5" />
-            MCP Protocol
-          </button>
-        </div>
-
-        {/* Top Badges */}
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-slate-400 font-mono">Zero Cloud Cost</span>
-          <span className="text-slate-600">•</span>
-          <span className="text-emerald-400 font-mono font-semibold">
-            {distilledState.stats.tokenReductionPercentage}% Token Savings
-          </span>
         </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 p-6 max-w-7xl mx-auto w-full flex flex-col gap-6">
-        {/* Distiller Tab */}
+        {/* 1. Distiller Tab */}
         {activeTab === 'distiller' && (
           <div className="flex flex-col gap-5">
-            {/* Control Bar */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
               <div className="flex items-center gap-3">
                 <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
@@ -406,7 +503,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Presets */}
               <div className="flex items-center gap-2 text-xs">
                 <span className="text-slate-400 font-semibold">Presets:</span>
                 {activePlatform === 'web' ? (
@@ -447,9 +543,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* Split Screen Columns: Raw Source vs Distilled Numbered Markdown */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-              {/* Left Column: Raw Source */}
               <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-[560px]">
                 <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2 font-medium text-slate-300">
@@ -473,7 +567,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Right Column: GhostBridge Distilled Markdown */}
               <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl overflow-hidden flex flex-col h-[560px]">
                 <div className="bg-slate-950 px-4 py-2.5 border-b border-slate-800 flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
@@ -505,15 +598,7 @@ export default function App() {
                   {distilledState.elements.map((item) => (
                     <div
                       key={item.id}
-                      onClick={() => {
-                        setSelectedElementId(item.id);
-                        if (item.bounds) {
-                          setMouseTarget({
-                            x: Math.min(480, Math.max(30, item.bounds.centerX % 480)),
-                            y: Math.min(260, Math.max(30, item.bounds.centerY % 260)),
-                          });
-                        }
-                      }}
+                      onClick={() => setSelectedElementId(item.id)}
                       className={`py-1 px-2 rounded cursor-pointer transition flex items-center justify-between group ${
                         selectedElementId === item.id
                           ? 'bg-cyan-500/20 text-cyan-100 border border-cyan-500/40'
@@ -569,7 +654,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Bezier Mouse Curve Visualizer Tab (Phase 2 Stealth Engine) */}
+        {/* 2. Bezier Mouse Curve Tab */}
         {activeTab === 'bezier' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-8 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col">
@@ -580,8 +665,7 @@ export default function App() {
                     Human-Like Cubic Bezier Mouse Trajectory
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Anti-bot systems (Cloudflare, PerimeterX, Datadome) flag straight-line artificial cursor movements.
-                    GhostBridge calculates organic deceleration, curvature drift, and biological micro-jitters.
+                    Bypasses Cloudflare & PerimeterX mouse-movement anomaly detectors with organic curvature and Gaussian jitter.
                   </p>
                 </div>
                 <button
@@ -594,10 +678,8 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Trajectory Canvas / SVG Viewport */}
               <div className="relative bg-slate-950 rounded-xl border border-slate-800 h-[340px] overflow-hidden flex items-center justify-center">
                 <svg className="w-full h-full absolute inset-0 pointer-events-none">
-                  {/* Grid lines */}
                   <defs>
                     <pattern id="grid" width="30" height="30" patternUnits="userSpaceOnUse">
                       <path d="M 30 0 L 0 0 0 30" fill="none" stroke="#1e293b" strokeWidth="0.8" />
@@ -605,7 +687,6 @@ export default function App() {
                   </defs>
                   <rect width="100%" height="100%" fill="url(#grid)" />
 
-                  {/* Bezier Trajectory Line */}
                   {trajectoryPoints.length > 1 && (
                     <polyline
                       fill="none"
@@ -616,7 +697,6 @@ export default function App() {
                     />
                   )}
 
-                  {/* Micro-jitter Waypoints */}
                   {trajectoryPoints.map((pt, i) => (
                     <circle
                       key={i}
@@ -628,7 +708,6 @@ export default function App() {
                   ))}
                 </svg>
 
-                {/* Animated Ghost Cursor */}
                 <div
                   className="absolute pointer-events-none transition-transform duration-75 ease-linear"
                   style={{
@@ -645,7 +724,6 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Interactive Click to Set Target */}
                 <div
                   onClick={(e) => {
                     const rect = e.currentTarget.getBoundingClientRect();
@@ -672,7 +750,6 @@ export default function App() {
               </div>
             </div>
 
-            {/* Trajectory Telemetry */}
             <div className="lg:col-span-4 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
               <h3 className="font-bold text-sm text-white flex items-center gap-2">
                 <Activity className="h-4 w-4 text-emerald-400" />
@@ -701,84 +778,13 @@ export default function App() {
               </div>
 
               <div className="p-3.5 rounded-lg bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-200">
-                <strong>Playwright Integration:</strong> GhostWebDriver moves through these exact waypoints in sequence prior to triggering mouse down/up events, achieving 100% bypass on mouse dynamics heuristics.
+                <strong>Playwright Integration:</strong> GhostWebDriver executes these exact smooth coordinates before triggering mouse down/up events.
               </div>
             </div>
           </div>
         )}
 
-        {/* Session Vault Tab (Phase 2 Local Persistence) */}
-        {activeTab === 'vault' && (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Vault Profiles List */}
-            <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
-                  <Lock className="h-4 w-4 text-cyan-400" />
-                  <h3 className="font-bold text-sm text-white">Encrypted Local Vault</h3>
-                </div>
-                <span className="text-[11px] font-mono text-slate-500">~/.ghostbridge/vault</span>
-              </div>
-
-              <div className="space-y-2">
-                {vaultProfiles.map((p) => (
-                  <div
-                    key={p.domain}
-                    onClick={() => setSelectedVaultDomain(p.domain)}
-                    className={`p-3 rounded-lg cursor-pointer border transition ${
-                      selectedVaultDomain === p.domain
-                        ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-100'
-                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-semibold text-xs mb-1">
-                      <span>{p.domain}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">
-                        {p.cookies.length} cookies
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 truncate">{p.notes}</div>
-                    <div className="text-[10px] text-slate-500 mt-1">Updated: {new Date(p.updatedAt).toLocaleTimeString()}</div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
-                <strong>Never Log In Twice:</strong> Once a human solves 2FA or CAPTCHA during handoff, GhostBridge captures all session tokens into the vault and auto-injects them on subsequent agent runs.
-              </div>
-            </div>
-
-            {/* Vault Entry Inspector */}
-            <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
-                <h3 className="font-bold text-sm text-white">
-                  Profile Details: <span className="text-cyan-400">{selectedVaultDomain}</span>
-                </h3>
-                <span className="text-xs text-emerald-400 font-mono">StorageState JSON</span>
-              </div>
-
-              {/* Cookie Table */}
-              <div className="flex-1 overflow-auto bg-slate-950 rounded-lg border border-slate-800 p-3 font-mono text-xs">
-                {vaultProfiles.find((p) => p.domain === selectedVaultDomain)?.cookies.map((c, i) => (
-                  <div key={i} className="py-2 border-b border-slate-800/80 last:border-0">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-indigo-400">{c.name}</span>
-                      <div className="flex items-center gap-1.5 text-[10px]">
-                        {c.httpOnly && <span className="px-1 rounded bg-slate-800 text-slate-300">HttpOnly</span>}
-                        {c.secure && <span className="px-1 rounded bg-emerald-950 text-emerald-300">Secure</span>}
-                        {c.sameSite && <span className="px-1 rounded bg-slate-800 text-slate-300">{c.sameSite}</span>}
-                      </div>
-                    </div>
-                    <div className="text-[11px] text-slate-400 break-all mt-0.5">{c.value}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5">Domain: {c.domain} • Path: {c.path}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Unified Actions & Handoff Simulator Tab */}
+        {/* 3. Unified Actions Tab */}
         {activeTab === 'actions' && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             <div className="lg:col-span-6 flex flex-col gap-5">
@@ -846,7 +852,6 @@ export default function App() {
                     </button>
                   </div>
 
-                  {/* Human Handoff trigger */}
                   <div className="mt-4 pt-4 border-t border-slate-800">
                     <div className="flex items-center justify-between mb-2">
                       <span className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
@@ -873,7 +878,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Handoff Modal Alert if Active */}
               {handoffActive && (
                 <div className="bg-amber-950/80 border border-amber-500/60 rounded-xl p-4 animate-in fade-in slide-in-from-top-2">
                   <div className="flex items-start gap-3">
@@ -918,7 +922,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Action Log & Protocol Telemetry */}
             <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col h-[520px]">
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2">
@@ -959,7 +962,220 @@ export default function App() {
           </div>
         )}
 
-        {/* Token Tax ROI Calculator Tab */}
+        {/* 4. Session Vault Tab */}
+        {activeTab === 'vault' && (
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4 text-cyan-400" />
+                  <h3 className="font-bold text-sm text-white">Encrypted Local Vault</h3>
+                </div>
+                <span className="text-[11px] font-mono text-slate-500">~/.ghostbridge/vault</span>
+              </div>
+
+              <div className="space-y-2">
+                {vaultProfiles.map((p) => (
+                  <div
+                    key={p.domain}
+                    onClick={() => setSelectedVaultDomain(p.domain)}
+                    className={`p-3 rounded-lg cursor-pointer border transition ${
+                      selectedVaultDomain === p.domain
+                        ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-100'
+                        : 'bg-slate-950 border-slate-800 hover:border-slate-700 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between font-semibold text-xs mb-1">
+                      <span>{p.domain}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">
+                        {p.cookies.length} cookies
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">{p.notes}</div>
+                    <div className="text-[10px] text-slate-500 mt-1">Updated: {new Date(p.updatedAt).toLocaleTimeString()}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200">
+                <strong>Never Log In Twice:</strong> Once a human solves 2FA or CAPTCHA during handoff, GhostBridge captures all session tokens into the vault and auto-injects them on subsequent agent runs.
+              </div>
+            </div>
+
+            <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800 mb-3">
+                <h3 className="font-bold text-sm text-white">
+                  Profile Details: <span className="text-cyan-400">{selectedVaultDomain}</span>
+                </h3>
+                <span className="text-xs text-emerald-400 font-mono">StorageState JSON</span>
+              </div>
+
+              <div className="flex-1 overflow-auto bg-slate-950 rounded-lg border border-slate-800 p-3 font-mono text-xs">
+                {vaultProfiles.find((p) => p.domain === selectedVaultDomain)?.cookies.map((c, i) => (
+                  <div key={i} className="py-2 border-b border-slate-800/80 last:border-0">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-indigo-400">{c.name}</span>
+                      <div className="flex items-center gap-1.5 text-[10px]">
+                        {c.httpOnly && <span className="px-1 rounded bg-slate-800 text-slate-300">HttpOnly</span>}
+                        {c.secure && <span className="px-1 rounded bg-emerald-950 text-emerald-300">Secure</span>}
+                        {c.sameSite && <span className="px-1 rounded bg-slate-800 text-slate-300">{c.sameSite}</span>}
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-slate-400 break-all mt-0.5">{c.value}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Domain: {c.domain} • Path: {c.path}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 5. Live MCP Simulator & Protocol Tab */}
+        {activeTab === 'mcp' && (
+          <div className="flex flex-col gap-6">
+            {/* Live Interactive MCP Tool Call Simulator */}
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <h3 className="font-bold text-base text-white flex items-center gap-2">
+                    <Boxes className="h-5 w-5 text-cyan-400" />
+                    Live MCP Tool Call Simulator (JSON-RPC 2.0)
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Test how frontier models (Claude Code, Cursor, OpenClaw) invoke GhostBridge tools via stdio.
+                  </p>
+                </div>
+                <button
+                  onClick={handleRunMcpTool}
+                  className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-lg shadow-cyan-500/20 transition"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Execute MCP Call
+                </button>
+              </div>
+
+              {/* Tool selector buttons */}
+              <div className="flex flex-wrap gap-2">
+                {MCP_TOOLS_LIST.map((tool) => (
+                  <button
+                    key={tool.name}
+                    onClick={() => {
+                      setSelectedMcpTool(tool.name);
+                      setMcpArgsInput(JSON.stringify(tool.defaultArgs, null, 2));
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-mono transition border ${
+                      selectedMcpTool === tool.name
+                        ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow'
+                        : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-slate-200'
+                    }`}
+                  >
+                    {tool.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* JSON-RPC Request & Response Split */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Request Box */}
+                <div className="bg-slate-950 rounded-xl border border-slate-800 p-3.5 flex flex-col h-[280px]">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                    <span className="font-mono text-cyan-400 font-semibold">JSON-RPC Request Frame</span>
+                    <span className="text-slate-500 text-[11px]">method: tools/call</span>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-400 mb-1 font-sans">
+                    {MCP_TOOLS_LIST.find((t) => t.name === selectedMcpTool)?.description}
+                  </div>
+                  <div className="flex-1 mt-1 font-mono text-xs text-slate-300 overflow-auto">
+                    <textarea
+                      value={mcpArgsInput}
+                      onChange={(e) => setMcpArgsInput(e.target.value)}
+                      className="w-full h-full bg-transparent resize-none outline-none font-mono text-xs text-indigo-300"
+                      spellCheck={false}
+                    />
+                  </div>
+                </div>
+
+                {/* Response Box */}
+                <div className="bg-slate-950 rounded-xl border border-slate-800 p-3.5 flex flex-col h-[280px]">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs">
+                    <span className="font-mono text-emerald-400 font-semibold">JSON-RPC Response Frame</span>
+                    <button
+                      onClick={() => {
+                        if (mcpResponsePayload) {
+                          navigator.clipboard.writeText(mcpResponsePayload);
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 2000);
+                        }
+                      }}
+                      className="text-slate-400 hover:text-slate-200 text-[11px] flex items-center gap-1"
+                    >
+                      {copied ? <Check className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+                      Copy Response
+                    </button>
+                  </div>
+                  <div className="flex-1 mt-2 font-mono text-xs text-slate-300 overflow-auto whitespace-pre-wrap leading-relaxed">
+                    {mcpResponsePayload ? (
+                      mcpResponsePayload
+                    ) : (
+                      <span className="text-slate-600">
+                        // Click "Execute MCP Call" above to simulate JSON-RPC stdio response
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Config Snippets */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  <Terminal className="h-4 w-4 text-cyan-400" />
+                  Claude Code / Claude Desktop Configuration
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Add GhostBridge to your <code>claude_desktop_config.json</code>:
+                </p>
+                <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto">
+{`{
+  "mcpServers": {
+    "ghostbridge": {
+      "command": "npx",
+      "args": ["-y", "ghostbridge", "serve-mcp"]
+    }
+  }
+}`}
+                </div>
+              </div>
+
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
+                <h3 className="font-bold text-sm text-white flex items-center gap-2">
+                  <Smartphone className="h-4 w-4 text-emerald-400" />
+                  Physical Android Phone Connection Guide
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Connect your real phone in 3 steps (Zero emulators, zero root):
+                </p>
+                <div className="space-y-2 text-xs text-slate-300">
+                  <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
+                    <span className="font-bold text-cyan-400">1.</span>
+                    <span>Enable <strong>Developer Options</strong> and toggle on <strong>USB Debugging</strong>.</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
+                    <span className="font-bold text-cyan-400">2.</span>
+                    <span>Connect phone via USB and tap <strong>"Always allow from this computer"</strong>.</span>
+                  </div>
+                  <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
+                    <span className="font-bold text-cyan-400">3.</span>
+                    <span>Run <code>npx ghostbridge device inspect</code> to get the live numbered Markdown map.</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 6. Token Tax ROI Calculator Tab */}
         {activeTab === 'calculator' && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 flex flex-col gap-6">
             <div>
@@ -1043,79 +1259,12 @@ export default function App() {
             </div>
           </div>
         )}
-
-        {/* MCP & CLI Setup Tab */}
-        {activeTab === 'mcp' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <Terminal className="h-4 w-4 text-cyan-400" />
-                Claude Code / Claude Desktop Setup
-              </h3>
-              <p className="text-xs text-slate-400">
-                Add GhostBridge to your <code>claude_desktop_config.json</code>:
-              </p>
-              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-xs text-slate-300 overflow-x-auto">
-{`{
-  "mcpServers": {
-    "ghostbridge": {
-      "command": "npx",
-      "args": ["-y", "ghostbridge", "serve-mcp"]
-    }
-  }
-}`}
-              </div>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(JSON.stringify({
-                    mcpServers: {
-                      ghostbridge: {
-                        command: "npx",
-                        args: ["-y", "ghostbridge", "serve-mcp"]
-                      }
-                    }
-                  }, null, 2));
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
-                className="self-start px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded text-xs flex items-center gap-1.5 transition"
-              >
-                {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-                Copy Config
-              </button>
-            </div>
-
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3">
-              <h3 className="font-bold text-sm text-white flex items-center gap-2">
-                <Smartphone className="h-4 w-4 text-emerald-400" />
-                Physical Android Phone Connection Guide
-              </h3>
-              <p className="text-xs text-slate-400">
-                Connect your real phone in 3 easy steps (Zero emulators, zero root):
-              </p>
-              <div className="space-y-2 text-xs text-slate-300">
-                <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
-                  <span className="font-bold text-cyan-400">1.</span>
-                  <span>Enable <strong>Developer Options</strong> (tap Build Number 7 times) and toggle on <strong>USB Debugging</strong>.</span>
-                </div>
-                <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
-                  <span className="font-bold text-cyan-400">2.</span>
-                  <span>Connect phone via USB cable and tap <strong>"Always allow from this computer"</strong>.</span>
-                </div>
-                <div className="p-2.5 rounded bg-slate-950 border border-slate-800 flex items-start gap-2">
-                  <span className="font-bold text-cyan-400">3.</span>
-                  <span>Run <code>npx ghostbridge device inspect</code> to get the live numbered Markdown map.</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
       </main>
 
       {/* Footer */}
       <footer className="border-t border-slate-800/80 bg-slate-950 py-3.5 px-6 text-xs text-slate-500 flex items-center justify-between">
         <div>
-          GhostBridge Core • Phase 2 Stealth Web & ADB Drivers • Open Source Apache-2.0
+          GhostBridge Core • Phase 4 Production Ready • Open Source Apache-2.0
         </div>
         <div className="flex items-center gap-4">
           <span>Local-First</span>
