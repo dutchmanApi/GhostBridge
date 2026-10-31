@@ -390,8 +390,8 @@ export function distillHtmlString(
     markdown,
     elements,
     stats: {
-      rawByteCount: Buffer.byteLength(html, 'utf8'),
-      distilledByteCount: Buffer.byteLength(markdown, 'utf8'),
+      rawByteCount: new TextEncoder().encode(html).length,
+      distilledByteCount: new TextEncoder().encode(markdown).length,
       rawEstimatedTokens: rawTokens,
       distilledEstimatedTokens: distilledTokens,
       tokenReductionPercentage: reduction,

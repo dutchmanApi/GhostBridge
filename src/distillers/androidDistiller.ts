@@ -247,8 +247,8 @@ export function distillAndroidXml(
     markdown += `${line}\n`;
   }
 
-  const rawBytes = Buffer.byteLength(xmlContent, 'utf8');
-  const distilledBytes = Buffer.byteLength(markdown, 'utf8');
+  const rawBytes = new TextEncoder().encode(xmlContent).length;
+  const distilledBytes = new TextEncoder().encode(markdown).length;
   const rawTokens = estimateTokens(xmlContent);
   const distilledTokens = estimateTokens(markdown);
   const reduction =
