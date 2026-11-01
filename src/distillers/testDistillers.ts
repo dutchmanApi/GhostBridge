@@ -109,7 +109,27 @@ export function runDistillerTests() {
   console.log(`Interactive Elements Found: ${androidState.elements.length}`);
   console.log('\nDistilled Markdown Output with Tap Coordinates:\n' + androidState.markdown);
 
-  return { webState, androidState };
+  // Test Hacker News sample verifying Rules A, B, and C
+  const SAMPLE_HN_HTML = `
+  <table class="itemlist">
+    <tr>
+      <td><a id="up_38100" href="vote?id=38100&how=up"><div class="votearrow" title="upvote"></div></a></td>
+      <td class="title"><a href="https://talosintelligence.com/post">New Vulnerability in Linux Kernel</a></td>
+      <td class="sitebit"><a href="from?site=talosintelligence.com"><span class="sitestr">talosintelligence.com</span></a></td>
+    </tr>
+    <tr>
+      <td><a id="top"></a></td>
+      <td><input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="false"></td>
+    </tr>
+  </table>
+  `;
+
+  const hnState = distillHtmlString(SAMPLE_HN_HTML, 'https://news.ycombinator.com', 'Hacker News');
+  console.log('\n--- HACKER NEWS RULES A, B, C TEST ---');
+  console.log(`Elements Found: ${hnState.elements.length}`);
+  console.log('Distilled Markdown:\n' + hnState.markdown);
+
+  return { webState, androidState, hnState };
 }
 
 // Auto-run if executed directly via node / tsx

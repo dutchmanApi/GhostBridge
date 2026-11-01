@@ -91,6 +91,56 @@ const PRESET_WEB_LOGIN = `<!DOCTYPE html>
 </body>
 </html>`;
 
+const PRESET_WEB_HN = `<!DOCTYPE html>
+<html>
+<head><title>Hacker News</title></head>
+<body>
+  <table border="0" cellpadding="0" cellspacing="0" width="100%" bgcolor="#f6f6ef">
+    <tr>
+      <td bgcolor="#ff6600">
+        <table border="0" cellpadding="0" cellspacing="0" width="100%" style="padding:2px">
+          <tr>
+            <td><a href="https://news.ycombinator.com"><img src="y18.svg" width="18" height="18" alt="Y Combinator"></a></td>
+            <td><b><a href="news">Hacker News</a></b> <a href="newest">new</a> | <a href="threads">threads</a> | <a href="past">past</a> | <a href="comments">comments</a> | <a href="ask">ask</a> | <a href="show">show</a> | <a href="jobs">jobs</a> | <a href="submit">submit</a></td>
+            <td align="right"><a href="login?goto=news">login</a></td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <table border="0" cellpadding="0" cellspacing="0" class="itemlist">
+          <tr class="athing">
+            <td align="right" valign="top" class="title"><span class="rank">1.</span></td>
+            <td valign="top" class="votelinks"><center><a id="up_38100" href="vote?id=38100&how=up"><div class="votearrow" title="upvote"></div></a></center></td>
+            <td class="title"><span class="titleline"><a href="https://talosintelligence.com/vulnerability">Linux Kernel eBPF Privilege Escalation</a><span class="sitebit comhead"> (<a href="from?site=talosintelligence.com"><span class="sitestr">talosintelligence.com</span></a>)</span></span></td>
+          </tr>
+          <tr><td colspan="2"></td><td class="subtext"><span class="score">421 points</span> by <a href="user?id=alex">alex</a> <span class="age">3 hours ago</span> | <a href="hide?id=38100">hide</a> | <a href="item?id=38100">89 comments</a></td></tr>
+          
+          <tr class="athing">
+            <td align="right" valign="top" class="title"><span class="rank">2.</span></td>
+            <td valign="top" class="votelinks"><center><a id="up_38101" href="vote?id=38101&how=up"><div class="votearrow" title="upvote"></div></a></center></td>
+            <td class="title"><span class="titleline"><a href="https://github.com/ghostbridge">GhostBridge: Zero-Cost Semantic Runtime for AI Agents</a><span class="sitebit comhead"> (<a href="from?site=github.com"><span class="sitestr">github.com</span></a>)</span></span></td>
+          </tr>
+          <tr><td colspan="2"></td><td class="subtext"><span class="score">892 points</span> by <a href="user?id=dang">dang</a> <span class="age">5 hours ago</span> | <a href="hide?id=38101">hide</a> | <a href="item?id=38101">142 comments</a></td></tr>
+          
+          <tr class="morespace" style="height:10px"></tr>
+          <tr><td colspan="2"></td><td class="title"><a href="?p=2" class="morelink" rel="next">More</a></td></tr>
+        </table>
+      </td>
+    </tr>
+    <tr>
+      <td>
+        <center>
+          <a id="top"></a>
+          <form method="get" action="//hn.algolia.com/">Search: <input type="text" name="q" size="17" autocorrect="off" spellcheck="false" autocapitalize="off" autocomplete="false"></form>
+        </center>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+
 const PRESET_ANDROID_PLAYSTORE = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
 <hierarchy rotation="0">
   <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.android.vending" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1080,2400]">
@@ -253,6 +303,9 @@ export default function App() {
     } else if (preset === 'login') {
       setActivePlatform('web');
       setRawInput(PRESET_WEB_LOGIN);
+    } else if (preset === 'hn') {
+      setActivePlatform('web');
+      setRawInput(PRESET_WEB_HN);
     } else if (preset === 'playstore') {
       setActivePlatform('android');
       setRawInput(PRESET_ANDROID_PLAYSTORE);
@@ -526,6 +579,16 @@ export default function App() {
                       }`}
                     >
                       Login & 2FA Form
+                    </button>
+                    <button
+                      onClick={() => handlePresetChange('hn')}
+                      className={`px-2.5 py-1 rounded border transition ${
+                        selectedPreset === 'hn'
+                          ? 'border-indigo-500 bg-indigo-500/20 text-indigo-200'
+                          : 'border-slate-800 bg-slate-950 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      Hacker News (88% Saved)
                     </button>
                   </>
                 ) : (

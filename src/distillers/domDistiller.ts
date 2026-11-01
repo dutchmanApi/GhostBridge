@@ -55,21 +55,44 @@ export const DOM_DISTILLATION_SCRIPT = `
     const placeholder = el.getAttribute('placeholder');
     if (placeholder && placeholder.trim()) return placeholder.trim();
 
-    const title = el.getAttribute('title');
-    if (title && title.trim()) return title.trim();
-
-    const alt = el.getAttribute('alt');
-    if (alt && alt.trim()) return alt.trim();
+    // Check inner text
+    let text = el.innerText || el.textContent || '';
+    text = text.replace(/\\s+/g, ' ').trim();
 
     // If input button/submit
     if (el.tagName === 'INPUT' && (el.type === 'button' || el.type === 'submit')) {
       if (el.value) return el.value.trim();
     }
 
-    // Text content
-    let text = el.innerText || el.textContent || '';
-    text = text.replace(/\\s+/g, ' ').trim();
-    return text.slice(0, 140);
+    if (text) {
+      return text.slice(0, 140);
+    }
+
+    const title = el.getAttribute('title');
+    if (title && title.trim()) return title.trim();
+
+    const alt = el.getAttribute('alt');
+    if (alt && alt.trim()) return alt.trim();
+
+    // If container <a> or <button> has no direct text, check if it wraps a child with title/alt (e.g. <a id="up_..."><div class="votearrow" title="upvote">)
+    if (el.tagName === 'A' || el.tagName === 'BUTTON') {
+      const childWithTitle = el.querySelector('[title], [alt], [aria-label]');
+      if (childWithTitle) {
+        const childLabel = childWithTitle.getAttribute('title') || childWithTitle.getAttribute('aria-label') || childWithTitle.getAttribute('alt');
+        if (childLabel && childLabel.trim()) return childLabel.trim();
+      }
+    }
+
+    // Rule B (Fallback label for inputs & links): fall back to name, title, or id
+    const name = el.getAttribute('name');
+    if (name && name.trim()) return name.trim();
+
+    const id = el.getAttribute('id');
+    if (id && id.trim() && !id.startsWith('data-') && id.length < 32) {
+      return id.trim();
+    }
+
+    return '';
   }
 
   function determineRole(el, tag, roleAttr) {
@@ -141,8 +164,27 @@ export const DOM_DISTILLATION_SCRIPT = `
     const style = window.getComputedStyle(el);
 
     if (isVisible(el, style, rect)) {
+      // Rule A (Skip duplicate child spans): If an element is a <span>, <u>, or <div> whose trimmed text is identical to its parent <a ...> or <button> text, skip it
+      const parent = el.parentElement;
+      if (parent && (parent.tagName === 'A' || parent.tagName === 'BUTTON' || parent.getAttribute('role') === 'button' || parent.getAttribute('role') === 'link')) {
+        const myText = (el.innerText || el.textContent || '').replace(/\\s+/g, ' ').trim();
+        const parentText = (parent.innerText || parent.textContent || '').replace(/\\s+/g, ' ').trim();
+        if (myText && myText === parentText) {
+          currentNode = walker.nextNode();
+          continue;
+        }
+        // Also skip child icon/div if parent <a> was already assigned its title/label
+        const childTitle = el.getAttribute('title') || el.getAttribute('aria-label') || el.getAttribute('alt');
+        const parentLabel = getCleanText(parent);
+        if (childTitle && parentLabel && childTitle.trim() === parentLabel.trim()) {
+          currentNode = walker.nextNode();
+          continue;
+        }
+      }
+
       const roleAttr = el.getAttribute('role');
-      const isClickable = INTERACTIVE_TAGS.has(tag) ||
+      const isClickable =
+        (tag === 'A' ? el.hasAttribute('href') || el.hasAttribute('onclick') : INTERACTIVE_TAGS.has(tag)) ||
         INTERACTIVE_ROLES.has(roleAttr) ||
         el.hasAttribute('onclick') ||
         el.getAttribute('cursor') === 'pointer' ||
@@ -151,6 +193,12 @@ export const DOM_DISTILLATION_SCRIPT = `
       const isHeading = HEADING_TAGS.has(tag);
       const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       const cleanText = getCleanText(el);
+
+      // Rule C (Drop empty unlabeled anchors & elements): If a tag has zero label after checking all attributes, skip tagging it unless it's an <input> or <textarea>
+      if (!cleanText && !isInput) {
+        currentNode = walker.nextNode();
+        continue;
+      }
 
       // Only distill if it's interactive OR a semantic header/status with text
       const shouldInclude = isClickable || isInput || (isHeading && cleanText.length > 0);
@@ -284,7 +332,7 @@ export function distillHtmlString(
     // Check if tag is interactive or semantic
     const isInteractive =
       rawTag === 'button' ||
-      rawTag === 'a' ||
+      (rawTag === 'a' && (attrs.includes('href') || attrs.includes('onclick'))) ||
       rawTag === 'input' ||
       rawTag === 'textarea' ||
       rawTag === 'select';
@@ -297,6 +345,9 @@ export function distillHtmlString(
     const typeMatch = attrs.match(/type=["']([^"']+)["']/i);
     const type = typeMatch ? typeMatch[1].toLowerCase() : rawTag === 'input' ? 'text' : '';
     const idMatch = attrs.match(/id=["']([^"']+)["']/i);
+    const nameMatch = attrs.match(/name=["']([^"']+)["']/i);
+    const titleMatch = attrs.match(/title=["']([^"']+)["']/i);
+    const altMatch = attrs.match(/alt=["']([^"']+)["']/i);
     const placeholderMatch = attrs.match(/placeholder=["']([^"']+)["']/i);
     const valueMatch = attrs.match(/value=["']([^"']+)["']/i);
     const ariaLabelMatch = attrs.match(/aria-label=["']([^"']+)["']/i);
@@ -304,12 +355,47 @@ export function distillHtmlString(
     const checked = attrs.includes('checked');
     const disabled = attrs.includes('disabled');
 
+    // Check if inner content has a child element with title, alt, or aria-label (e.g. <div class="votearrow" title="upvote">)
+    const childTitleMatch = innerContent.match(/title=["']([^"']+)["']/i);
+    const childAltMatch = innerContent.match(/alt=["']([^"']+)["']/i);
+    const childAriaMatch = innerContent.match(/aria-label=["']([^"']+)["']/i);
+
     // Clean inner text
-    const cleanText = (
+    const textOnly = innerContent.replace(/<[^>]+>/g, '').replace(/\\s+/g, ' ').trim();
+
+    // Rule B (Fallback label for inputs & links): fall back to name, title, or id
+    let cleanText = (
       ariaLabelMatch?.[1] ||
       placeholderMatch?.[1] ||
-      innerContent.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim()
+      textOnly ||
+      childTitleMatch?.[1] ||
+      childAltMatch?.[1] ||
+      childAriaMatch?.[1] ||
+      titleMatch?.[1] ||
+      altMatch?.[1] ||
+      nameMatch?.[1] ||
+      (idMatch && !idMatch[1].startsWith('data-') && idMatch[1].length < 32 ? idMatch[1] : '')
     ).slice(0, 120);
+
+    const isInput = rawTag === 'input' || rawTag === 'textarea' || rawTag === 'select';
+
+    // Rule C (Drop empty unlabeled anchors & elements): If a tag has zero label after checking all attributes, skip tagging it unless it's an <input> or <textarea>
+    if (!cleanText && !isInput) {
+      continue;
+    }
+
+    // For unlabeled inputs, fall back to name, type, or tag
+    if (!cleanText && isInput) {
+      cleanText = nameMatch?.[1] || (type ? `input[${type}]` : rawTag);
+    }
+
+    // Rule A (Skip duplicate child tags / links with identical text)
+    if (elements.length > 0) {
+      const prev = elements[elements.length - 1];
+      if (prev.label && cleanText && prev.label === cleanText && (prev.role === 'link' || prev.role === 'button')) {
+        continue;
+      }
+    }
 
     const id = ghostIdCounter++;
     const role: SemanticRole =
